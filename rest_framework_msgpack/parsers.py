@@ -36,11 +36,39 @@ class MessagePackParser(BaseParser):
 
     media_type = 'application/msgpack'
 
+    def _clean_msgpack_value(self, value, lookup):
+        if isinstance(value, (dict, list)):
+            value = _map_msgpack(value, lookup)
+        elif isinstance(value, str):
+            value = value.replace("\u0000", "")
+
+        return value
+
+
+    def _map_msgpack(self, unmapped, lookup):
+        mapped: Optional[Union[list, dict]] = None
+        if isinstance(unmapped, dict):
+            mapped = {}
+
+            for key, value in unmapped.items():
+                value = _clean_msgpack_value(value, lookup)
+                mapped[lookup[key]] = value
+        elif isinstance(unmapped, list):
+            mapped = []
+            for value in unmapped:
+                value = _clean_msgpack_value(value, lookup)
+                mapped.append(value)
+        else:
+            raise Exception("Unknown unmapped object")
+
+        return mapped
+
+
     def parse(self, stream, media_type=None, parser_context=None):
         try:
-            return msgpack.load(stream,
-                                use_list=True,
-                                encoding="utf-8",
-                                object_hook=MessagePackDecoder().decode)
+            root, lookup = msgpack.load(
+                stream, encoding="utf-8", object_hook=MessagePackDecoder().decode
+            )
+            return self._map_msgpack(root, lookup)
         except Exception as exc:
             raise ParseError('MessagePack parse error - %s' % text_type(exc))
